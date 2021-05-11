@@ -5,6 +5,7 @@
 #include<fstream>
 #include<cstring>
 #include<sstream>
+#include<mpi.h>
 
 using namespace std;
 
@@ -12,7 +13,16 @@ using namespace std;
 
 double *initialize(double *points, long N, int dim, int nclusters, string method){
   // double **cluster_centers = (double **)malloc(nclusters*sizeof(double *));
-  double *cluster_centers = (double *)malloc(nclusters*dim*sizeof(double));
+
+
+  int mpirank, p;
+
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
+  MPI_Comm_size(MPI_COMM_WORLD, &p);
+
+  double *cluster_centers = (double *)calloc(nclusters*dim, sizeof(double));
+
+  
   /*
   for (int i = 0; i < nclusters; i++){
     cluster_centers[i] = (double *)calloc(dim, sizeof(double));
@@ -77,7 +87,37 @@ double *initialize(double *points, long N, int dim, int nclusters, string method
       memcpy(&cluster_centers[i*dim], &points[farthest*dim], dim*sizeof(double));
     }
   }
-  return cluster_centers;
+
+  //each process has a copy of cluster centers
+  //take mean of each and distribute back to the processes
+
+  
+  double *final_clusters = (double*)calloc(nclusters*dim, sizeof(double));
+  double *combine_clusters = NULL;
+  if (mpirank == 0){
+    combine_clusters = (double *)calloc(nclusters*dim*p, sizeof(double)); 
+  }
+
+  //gather all cluster centers to root
+  
+  MPI_Gather(cluster_centers, nclusters*dim, MPI_DOUBLE, combine_clusters, nclusters*dim, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  
+  if (mpirank == 0){
+  for (int i = 0; i < dim*nclusters;i++){
+    for(int j = 0; j < p; j++){
+      final_clusters[i] += combine_clusters[i + j*dim*nclusters];  
+    }
+  }
+  divide(final_clusters, p, dim*nclusters);
+  }
+
+  //send back to other processes
+  MPI_Bcast(final_clusters, nclusters*dim, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+  free(cluster_centers);
+  free(combine_clusters);
+
+  return final_clusters;
 }
 
 void clusterAssignment(double *points, int* cluster_assignment, double *cluster_centers, int dim, long N, int nclusters){
@@ -85,8 +125,7 @@ void clusterAssignment(double *points, int* cluster_assignment, double *cluster_
   for (long point = 0; point < N; point++){
 
     double min_distance = 100000;
-    double min_center = 0;
-    // double *currpoint = points[point];    
+    double min_center = 0;   
 
     for (int center = 0; center < nclusters; center++){
       double dist = distance(&cluster_centers[center*dim], &points[point*dim], dim);
@@ -101,71 +140,110 @@ void clusterAssignment(double *points, int* cluster_assignment, double *cluster_
 }
 void updateCentroids(int *cluster_assignment, double *points, double *cluster_centers, int dim, long N, int nclusters){
   
+  int mpirank, p;
+
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
+  MPI_Comm_size(MPI_COMM_WORLD, &p);
+
   memset(cluster_centers, 0, nclusters*dim*sizeof(double));
+  double* temp_centers = (double*)calloc(nclusters*dim, sizeof(double));
 
   int *cluster_nums = (int *)calloc(nclusters, sizeof(int));
   for (int point = 0; point < N; point++){
-    sum(&cluster_centers[cluster_assignment[point]*dim], &points[point*dim], dim);
+    sum(&temp_centers[cluster_assignment[point]*dim], &points[point*dim], dim);
     cluster_nums[cluster_assignment[point]] += 1;    
   }
-  // printvec(cluster_centers[0], dim);
-
+  
   for (int i = 0; i < nclusters; i++){
-    divide(&cluster_centers[i*dim], cluster_nums[i], dim*nclusters);
+    divide(&temp_centers[i*dim], cluster_nums[i], dim);
   }
 
+  double *combine_clusters = NULL;
+  if (mpirank == 0){
+    combine_clusters = (double *)calloc(nclusters*dim*p, sizeof(double)); 
+  }
+
+  //gather all cluster centers to root
+  MPI_Gather(temp_centers, nclusters*dim, MPI_DOUBLE, combine_clusters, nclusters*dim, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+  if (mpirank == 0){
+  for (int i = 0; i < dim*nclusters;i++){
+    for(int j = 0; j < p; j++){
+      cluster_centers[i] += combine_clusters[i + j*dim*nclusters];  
+    }
+  }
+  divide(cluster_centers, p, dim*nclusters);
+  }
+  MPI_Bcast(cluster_centers, nclusters*dim, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  // cout<<mpirank<<" !! "<<endl;
+  //shift this to kmeans function
+  free(temp_centers);
+  free(combine_clusters);
   free(cluster_nums);
 }
 
-//if prev assignment is the same as current
-/*
-int compareAssignment(int *prevassignment, int *currassignment, long N){
-  for (long i = 0; i < N;i++ ){
-    if (prevassignment[i] != currassignment[i])
-      return 1;
-  }
-  return 0;
-}
-*/
-void trainKMeans(int epochs, double *points, long N, int dim, int nclusters){  
+//method which calls KMeans
+void trainKMeans(int epochs, double *points, long N, int dim, int nclusters){
+
+  int mpirank, p;
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
+  MPI_Comm_size(MPI_COMM_WORLD, &p);
+
   int epoch = 0;
+
+  //initialize cluster centers
   double *cluster_centers = initialize(points, N, dim, nclusters, "kmeans++");
 
-  cout<<"Init"<<endl;
+  if (mpirank == 0)
+    cout<<"Init"<<endl;
 
   int *curr_assignment = (int *)calloc(N, sizeof(int));
+
+
   clusterAssignment(points, curr_assignment, cluster_centers, dim, N, nclusters);
   
+  if (mpirank == 0){
   for (int i = 0; i < nclusters; i++)
     printvec(cluster_centers + i*dim, dim);
-
+  
   cout<<"Cluster Assigned"<<endl;
-  //all zero
-  int *prev_assignment = (int *)calloc(N, sizeof(int));
+  }
 
-  // while(compareAssignment(prev_assignment, curr_assignment, N) && epoch < epochs){
-  while(memcmp(prev_assignment, curr_assignment, N*sizeof(int)) && epoch < epochs){
+  int *prev_assignment = (int *)calloc(N, sizeof(int));
+  while(epoch < epochs && memcmp(prev_assignment, curr_assignment, N*sizeof(int)) ){
 
     //update the centroids
     updateCentroids(curr_assignment, points, cluster_centers, dim, N, nclusters);
     
-    for (int i = 0; i < nclusters; i++)
-      printvec(&cluster_centers[i*dim], dim);
+    if (mpirank == 0){
+      for (int i = 0; i < nclusters; i++)
+        printvec(&cluster_centers[i*dim], dim);
+    }
 
     memcpy(prev_assignment, curr_assignment, N*sizeof(int));
 
     clusterAssignment(points, curr_assignment, cluster_centers, dim, N, nclusters);
     epoch++;
+
+    if (mpirank == 0){
     // printvec2(curr_assignment, N);
     cout<<"Epoch "<<epoch<<endl;
+    }
   }
+  // printvec2(curr_assignment,N);
+  // return curr_assignment;
 }
 
 int main(int argc, char* argv[]){
-  // vector<vector<double> > array;
-  vector<double> finalarray;
-  // vector<double> row;                /* vector for row of values */
+  double* finaldata;
   string line;
+  vector<double> finalarray;
+
+  int mpirank, p;
+
+  MPI_Init(&argc, &argv);
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
+  MPI_Comm_size(MPI_COMM_WORLD, &p);
 
   int dim = 0;
   long N = 0;
@@ -174,7 +252,8 @@ int main(int argc, char* argv[]){
     //random generate
   }
   else {
-  ifstream f (argv[1]);   /* open file */
+    if (mpirank == 0){
+      ifstream f (argv[1]);   /* open file */
     if (!f.is_open()) {     /* validate file open for reading */
         perror (("error while opening file " + string(argv[1])).c_str());
         return 1;
@@ -203,29 +282,31 @@ int main(int argc, char* argv[]){
 
     N = N/dim;
     
-    cout<<N<<" "<<dim<<endl;
-    // double **finalarray = (double **)malloc(N*sizeof(double *));
-    // for (int i = 0; i< N;i++){
-      // finalarray[i] = array[i].data();
-    // }
-  
-    // array.clear();
+    finaldata = finalarray.data();
+    f.close();
+    }
 
-    double* finaldata = finalarray.data();
+    MPI_Bcast(&N, 1, MPI_LONG, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&dim, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    double *eachdata = (double *)calloc(dim*N/p, sizeof(double));
+
+    MPI_Scatter(finaldata, N*dim/p, MPI_DOUBLE, eachdata, N*dim/p, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
 
     /*
-    cout << "complete array\n\n";
-    for (int i = 0; i < N ; i++) {           
-        for (int j = 0; j < dim; j++)
-        cout << finaldata[i*dim + j] << "  ";
-      cout<<endl;
+    for (int i = 0; i < N*dim/p; i++){
+      cout<<eachdata[i]<<" "<<i<<endl;
     }*/
-
-
+    
     // int nclusters = sscanf(argv[2]);
+    
     int nclusters = 3;
-    trainKMeans(100, finaldata, N, dim, nclusters);
-    f.close();
+
+    //we are sending N/p once and never again
+    // int* assignment = trainKMeans(100, eachdata, N/p, dim, nclusters);
+    trainKMeans(100, eachdata, N/p, dim, nclusters);
   }
+  MPI_Finalize();
   return 0;
 }
