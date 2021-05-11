@@ -1,0 +1,116 @@
+loaded 100 data with dimension of 10 from data.csv file
+created 3 centroids
+Centroid 0:11 70 20 47 32 10 6 95 15 17 
+Centroid 1:63 47 61 85 95 90 16 68 65 81 
+Centroid 2:85 5 77 18 0 86 43 45 83 16 
+iteration 0
+iteration 1
+iteration 2
+iteration 3
+iteration 4
+iteration 5
+iteration 6
+iteration 7
+iteration 8
+iteration 9
+iteration 10
+Data 0: cluser 1
+Data 1: cluser 0
+Data 2: cluser 0
+Data 3: cluser 1
+Data 4: cluser 1
+Data 5: cluser 1
+Data 6: cluser 2
+Data 7: cluser 1
+Data 8: cluser 0
+Data 9: cluser 1
+Data 10: cluser 1
+Data 11: cluser 2
+Data 12: cluser 0
+Data 13: cluser 1
+Data 14: cluser 1
+Data 15: cluser 1
+Data 16: cluser 0
+Data 17: cluser 1
+Data 18: cluser 1
+Data 19: cluser 0
+Data 20: cluser 1
+Data 21: cluser 1
+Data 22: cluser 1
+Data 23: cluser 0
+Data 24: cluser 2
+Data 25: cluser 1
+Data 26: cluser 2
+Data 27: cluser 0
+Data 28: cluser 2
+Data 29: cluser 1
+Data 30: cluser 2
+Data 31: cluser 2
+Data 32: cluser 0
+Data 33: cluser 2
+Data 34: cluser 2
+Data 35: cluser 0
+Data 36: cluser 0
+Data 37: cluser 2
+Data 38: cluser 2
+Data 39: cluser 2
+Data 40: cluser 0
+Data 41: cluser 1
+Data 42: cluser 1
+Data 43: cluser 2
+Data 44: cluser 0
+Data 45: cluser 0
+Data 46: cluser 1
+Data 47: cluser 2
+Data 48: cluser 1
+Data 49: cluser 0
+Data 50: cluser 1
+Data 51: cluser 1
+Data 52: cluser 2
+Data 53: cluser 1
+Data 54: cluser 2
+Data 55: cluser 1
+Data 56: cluser 2
+Data 57: cluser 1
+Data 58: cluser 0
+Data 59: cluser 1
+Data 60: cluser 1
+Data 61: cluser 0
+Data 62: cluser 1
+Data 63: cluser 2
+Data 64: cluser 1
+Data 65: cluser 2
+Data 66: cluser 0
+Data 67: cluser 1
+Data 68: cluser 0
+Data 69: cluser 0
+Data 70: cluser 2
+Data 71: cluser 0
+Data 72: cluser 2
+Data 73: cluser 0
+Data 74: cluser 2
+Data 75: cluser 1
+Data 76: cluser 0
+Data 77: cluser 1
+Data 78: cluser 2
+Data 79: cluser 1
+Data 80: cluser 1
+Data 81: cluser 2
+Data 82: cluser 1
+Data 83: cluser 0
+Data 84: cluser 2
+Data 85: cluser 2
+Data 86: cluser 2
+Data 87: cluser 2
+Data 88: cluser 1
+Data 89: cluser 0
+Data 90: cluser 0
+Data 91: cluser 2
+Data 92: cluser 0
+Data 93: cluser 1
+Data 94: cluser 2
+Data 95: cluser 1
+Data 96: cluser 0
+Data 97: cluser 2
+Data 98: cluser 0
+Data 99: cluser 1
