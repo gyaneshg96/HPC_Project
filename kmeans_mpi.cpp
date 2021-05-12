@@ -1,6 +1,6 @@
 #include<iostream>
 #include<string>
-#include"utils.cpp"
+#include"utils2.cpp"
 #include<vector>
 #include<fstream>
 #include<cstring>
@@ -182,8 +182,38 @@ void updateCentroids(int *cluster_assignment, double *points, double *cluster_ce
   free(cluster_nums);
 }
 
+int hasConverged(int *prev_assignment, int *curr_assignment, long N){
+  
+  int mpirank, p;
+  MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
+  MPI_Comm_size(MPI_COMM_WORLD, &p);
+
+  int final_truth;
+  int truth = memcmp(prev_assignment, curr_assignment, N*sizeof(int));
+  int* combine_truths = NULL;
+  if (mpirank == 0){
+    combine_truths = (int *)calloc(p, sizeof(int));
+  }
+
+  MPI_Gather(&truth, 1, MPI_INT, combine_truths, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+  //only stop when all points have converged
+  if(mpirank == 0){
+    final_truth = 0;
+    for(int i = 0; i < p;i++){
+      final_truth = final_truth | combine_truths[i]; 
+    }
+  }
+
+  MPI_Bcast(&final_truth, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+  free(combine_truths);
+
+  return final_truth;
+}
+
 //method which calls KMeans
-void trainKMeans(int epochs, double *points, long N, int dim, int nclusters){
+int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int *curr_assignment){
 
   int mpirank, p;
   MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
@@ -192,33 +222,33 @@ void trainKMeans(int epochs, double *points, long N, int dim, int nclusters){
   int epoch = 0;
 
   //initialize cluster centers
-  double *cluster_centers = initialize(points, N, dim, nclusters, "kmeans++");
+  double *cluster_centers = initialize(points, N, dim, nclusters, "forgy");
 
   if (mpirank == 0)
     cout<<"Init"<<endl;
 
-  int *curr_assignment = (int *)calloc(N, sizeof(int));
+  // int *curr_assignment = (int *)calloc(N, sizeof(int));
 
 
   clusterAssignment(points, curr_assignment, cluster_centers, dim, N, nclusters);
   
   if (mpirank == 0){
-  for (int i = 0; i < nclusters; i++)
-    printvec(cluster_centers + i*dim, dim);
+  // for (int i = 0; i < nclusters; i++)
+    // printvec(cluster_centers + i*dim, dim);
   
   cout<<"Cluster Assigned"<<endl;
   }
 
   int *prev_assignment = (int *)calloc(N, sizeof(int));
-  while(epoch < epochs && memcmp(prev_assignment, curr_assignment, N*sizeof(int)) ){
+  while(epoch < epochs && hasConverged(prev_assignment, curr_assignment, N)){
 
     //update the centroids
     updateCentroids(curr_assignment, points, cluster_centers, dim, N, nclusters);
     
-    if (mpirank == 0){
-      for (int i = 0; i < nclusters; i++)
-        printvec(&cluster_centers[i*dim], dim);
-    }
+    // if (mpirank == 0){
+    //   for (int i = 0; i < nclusters; i++)
+    //     printvec(&cluster_centers[i*dim], dim);
+    // }
 
     memcpy(prev_assignment, curr_assignment, N*sizeof(int));
 
@@ -231,7 +261,7 @@ void trainKMeans(int epochs, double *points, long N, int dim, int nclusters){
     }
   }
   // printvec2(curr_assignment,N);
-  // return curr_assignment;
+  return epoch;
 }
 
 int main(int argc, char* argv[]){
@@ -252,8 +282,7 @@ int main(int argc, char* argv[]){
     //random generate
   }
   else {
-    if (mpirank == 0){
-      ifstream f (argv[1]);   /* open file */
+    ifstream f (argv[1]);   /* open file */
     if (!f.is_open()) {     /* validate file open for reading */
         perror (("error while opening file " + string(argv[1])).c_str());
         return 1;
@@ -273,39 +302,41 @@ int main(int argc, char* argv[]){
             }
           }
         if (dim == 0)
-        dim = row.size();
-        if (dim > 0)
-          finalarray.insert(finalarray.end(), row.begin(), row.end());
+          dim = row.size();
+        if (dim > 0){
+          if (N % p == mpirank)
+            finalarray.insert(finalarray.end(), row.begin(), row.end());
+          N++;
+        }
     }
-
     N = finalarray.size();
 
     N = N/dim;
     
     finaldata = finalarray.data();
     f.close();
-    }
-
-    MPI_Bcast(&N, 1, MPI_LONG, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&dim, 1, MPI_INT, 0, MPI_COMM_WORLD);
-
-    double *eachdata = (double *)calloc(dim*N/p, sizeof(double));
-
-    MPI_Scatter(finaldata, N*dim/p, MPI_DOUBLE, eachdata, N*dim/p, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
 
     /*
-    for (int i = 0; i < N*dim/p; i++){
-      cout<<eachdata[i]<<" "<<i<<endl;
+    for (int i = 0; i < N*dim; i++){
+      cout<<finaldata[i]<<" "<<mpirank<<endl;
     }*/
     
     // int nclusters = sscanf(argv[2]);
     
     int nclusters = 3;
 
-    //we are sending N/p once and never again
-    // int* assignment = trainKMeans(100, eachdata, N/p, dim, nclusters);
-    trainKMeans(100, eachdata, N/p, dim, nclusters);
+    MPI_Barrier(MPI_COMM_WORLD);
+    double tt = MPI_Wtime();
+
+    int *curr_assignment = (int *)calloc(N, sizeof(int));
+    int final_epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment);
+    double elapsed = MPI_Wtime() - tt;
+  
+    if (0 == mpirank) {
+      printf("Time elapsed per epoch is %f seconds.\n", elapsed/final_epoch);
+    }
+    
+    f.close();
   }
   MPI_Finalize();
   return 0;

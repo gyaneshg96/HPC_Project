@@ -1,10 +1,11 @@
 #include<iostream>
 #include<string>
-#include"utils.cpp"
+#include"utils2.cpp"
 #include<vector>
 #include<fstream>
 #include<cstring>
 #include<sstream>
+#include "utils.h"
 
 using namespace std;
 
@@ -86,7 +87,6 @@ void clusterAssignment(double *points, int* cluster_assignment, double *cluster_
 
     double min_distance = 100000;
     double min_center = 0;
-    // double *currpoint = points[point];    
 
     for (int center = 0; center < nclusters; center++){
       double dist = distance(&cluster_centers[center*dim], &points[point*dim], dim);
@@ -95,7 +95,6 @@ void clusterAssignment(double *points, int* cluster_assignment, double *cluster_
         min_center = center; 
       }
     }
-    // cout<<min_center<<endl;
     cluster_assignment[point] = min_center;
   }
 }
@@ -117,40 +116,30 @@ void updateCentroids(int *cluster_assignment, double *points, double *cluster_ce
   free(cluster_nums);
 }
 
-//if prev assignment is the same as current
-/*
-int compareAssignment(int *prevassignment, int *currassignment, long N){
-  for (long i = 0; i < N;i++ ){
-    if (prevassignment[i] != currassignment[i])
-      return 1;
-  }
-  return 0;
-}
-*/
-void trainKMeans(int epochs, double *points, long N, int dim, int nclusters){  
+
+int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int* curr_assignment){  
   int epoch = 0;
   double *cluster_centers = initialize(points, N, dim, nclusters, "kmeans++");
 
   cout<<"Init"<<endl;
 
-  int *curr_assignment = (int *)calloc(N, sizeof(int));
   clusterAssignment(points, curr_assignment, cluster_centers, dim, N, nclusters);
   
-  for (int i = 0; i < nclusters; i++)
-    printvec(cluster_centers + i*dim, dim);
+  // for (int i = 0; i < nclusters; i++)
+  //   printvec(cluster_centers + i*dim, dim);
 
   cout<<"Cluster Assigned"<<endl;
   //all zero
   int *prev_assignment = (int *)calloc(N, sizeof(int));
 
   // while(compareAssignment(prev_assignment, curr_assignment, N) && epoch < epochs){
-  while(memcmp(prev_assignment, curr_assignment, N*sizeof(int)) && epoch < epochs){
+  while(epoch < epochs && memcmp(prev_assignment, curr_assignment, N*sizeof(int)) ){
 
     //update the centroids
     updateCentroids(curr_assignment, points, cluster_centers, dim, N, nclusters);
     
-    for (int i = 0; i < nclusters; i++)
-      printvec(&cluster_centers[i*dim], dim);
+    // for (int i = 0; i < nclusters; i++)
+    //   printvec(&cluster_centers[i*dim], dim);
 
     memcpy(prev_assignment, curr_assignment, N*sizeof(int));
 
@@ -159,6 +148,7 @@ void trainKMeans(int epochs, double *points, long N, int dim, int nclusters){
     // printvec2(curr_assignment, N);
     cout<<"Epoch "<<epoch<<endl;
   }
+  return epoch;
 }
 
 int main(int argc, char* argv[]){
@@ -169,6 +159,8 @@ int main(int argc, char* argv[]){
 
   int dim = 0;
   long N = 0;
+
+  
 
   if (argc == 1){
     //random generate
@@ -203,14 +195,6 @@ int main(int argc, char* argv[]){
 
     N = N/dim;
     
-    cout<<N<<" "<<dim<<endl;
-    // double **finalarray = (double **)malloc(N*sizeof(double *));
-    // for (int i = 0; i< N;i++){
-      // finalarray[i] = array[i].data();
-    // }
-  
-    // array.clear();
-
     double* finaldata = finalarray.data();
 
     /*
@@ -224,7 +208,16 @@ int main(int argc, char* argv[]){
 
     // int nclusters = sscanf(argv[2]);
     int nclusters = 3;
-    trainKMeans(100, finaldata, N, dim, nclusters);
+
+    Timer tt;
+    tt.tic();
+
+    int *curr_assignment = (int *)calloc(N, sizeof(int));
+    int epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment);
+    double elapsed = tt.toc();
+    printf("Time elapsed  per epoch is %f seconds.\n", elapsed/epoch);
+    
+    // free(finaldata);
     f.close();
   }
   return 0;
