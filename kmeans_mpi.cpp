@@ -5,16 +5,16 @@
 #include<fstream>
 #include<cstring>
 #include<sstream>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 #include<mpi.h>
 
 using namespace std;
 
 
-
 double *initialize(double *points, long N, int dim, int nclusters, string method){
-  // double **cluster_centers = (double **)malloc(nclusters*sizeof(double *));
-
-
+  
   int mpirank, p;
 
   MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
@@ -23,27 +23,33 @@ double *initialize(double *points, long N, int dim, int nclusters, string method
   double *cluster_centers = (double *)calloc(nclusters*dim, sizeof(double));
 
   
-  /*
-  for (int i = 0; i < nclusters; i++){
-    cluster_centers[i] = (double *)calloc(dim, sizeof(double));
-  }*/
-
   if (method == "forgy"){
+    #pragma omp parallel for if(nclusters > 1000) 
     for (int i = 0; i < nclusters;i++){
       int val = rand() % N;
-      // memcpy(cluster_centers[i], points[val], dim*sizeof(double));
+      #pragma omp critical
       memcpy(&cluster_centers[i*dim], &points[val*dim], dim*sizeof(double));
+      // cblas_dcopy(dim, &points[val*dim], 1, &cluster_centers[i*dim], 1);
       //which clusters
   }
   }
   if (method == "random"){
     int *cluster_nums = (int *)calloc(nclusters, sizeof(int));
+
+    //doubts here
+    #pragma omp parallel for schedule(static)
     for (long i = 0; i< N;i++){
       int cluster = rand() % nclusters;
       //add to cluster centers
+
+      //critical section, only allow one thread at a time
+      #pragma omp critical
       sum(&cluster_centers[cluster*dim], &points[i*dim], dim);
+
       cluster_nums[cluster] += 1;
     }
+
+    #pragma omp parallel for if(nclusters > 1000)
     for (int i = 0; i < nclusters; i++)
       // cluster_centers[i] /= cluster_nums[i];
       divide(&cluster_centers[i*dim], cluster_nums[i], dim);
@@ -56,11 +62,13 @@ double *initialize(double *points, long N, int dim, int nclusters, string method
     int val = rand() % N;
     // cout<<"val "<<val;
     memcpy(&cluster_centers[0], &points[val*dim], dim*sizeof(double));
+    // cblas_dcopy(dim, &points[val*dim], 1, &cluster_centers[0], 1);
 
     // double *maxdist = (double *)calloc(N,sizeof(double));
     for (int i = 1; i < nclusters; i++){
       long farthest = 0;
       double maxdist = 0;
+      #pragma omp parallel for 
       for (long j = 0; j < N;j++){
         double mindist = 100000;
         int flag = 0;
@@ -103,6 +111,7 @@ double *initialize(double *points, long N, int dim, int nclusters, string method
   MPI_Gather(cluster_centers, nclusters*dim, MPI_DOUBLE, combine_clusters, nclusters*dim, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   
   if (mpirank == 0){
+  #pragma omp parallel for
   for (int i = 0; i < dim*nclusters;i++){
     for(int j = 0; j < p; j++){
       final_clusters[i] += combine_clusters[i + j*dim*nclusters];  
@@ -122,11 +131,11 @@ double *initialize(double *points, long N, int dim, int nclusters, string method
 
 void clusterAssignment(double *points, int* cluster_assignment, double *cluster_centers, int dim, long N, int nclusters){
 
+  #pragma omp parallel for
   for (long point = 0; point < N; point++){
 
     double min_distance = 100000;
     double min_center = 0;   
-
     for (int center = 0; center < nclusters; center++){
       double dist = distance(&cluster_centers[center*dim], &points[point*dim], dim);
       if (dist < min_distance){
@@ -134,7 +143,6 @@ void clusterAssignment(double *points, int* cluster_assignment, double *cluster_
         min_center = center; 
       }
     }
-    // cout<<min_center<<endl;
     cluster_assignment[point] = min_center;
   }
 }
@@ -149,11 +157,18 @@ void updateCentroids(int *cluster_assignment, double *points, double *cluster_ce
   double* temp_centers = (double*)calloc(nclusters*dim, sizeof(double));
 
   int *cluster_nums = (int *)calloc(nclusters, sizeof(int));
+
+  #pragma omp parallel for
   for (int point = 0; point < N; point++){
     sum(&temp_centers[cluster_assignment[point]*dim], &points[point*dim], dim);
     cluster_nums[cluster_assignment[point]] += 1;    
   }
+
+  // if (mpirank == 0)
+  //   printvec(temp_centers, nclusters*dim);
   
+  #pragma omp parallel for if(nclusters > 1000)
+  // dont parallelize for small cluster size
   for (int i = 0; i < nclusters; i++){
     divide(&temp_centers[i*dim], cluster_nums[i], dim);
   }
@@ -167,6 +182,7 @@ void updateCentroids(int *cluster_assignment, double *points, double *cluster_ce
   MPI_Gather(temp_centers, nclusters*dim, MPI_DOUBLE, combine_clusters, nclusters*dim, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
   if (mpirank == 0){
+  #pragma omp parallel for
   for (int i = 0; i < dim*nclusters;i++){
     for(int j = 0; j < p; j++){
       cluster_centers[i] += combine_clusters[i + j*dim*nclusters];  
@@ -227,14 +243,13 @@ int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int 
   if (mpirank == 0)
     cout<<"Init"<<endl;
 
-  // int *curr_assignment = (int *)calloc(N, sizeof(int));
 
 
   clusterAssignment(points, curr_assignment, cluster_centers, dim, N, nclusters);
   
   if (mpirank == 0){
   // for (int i = 0; i < nclusters; i++)
-    // printvec(cluster_centers + i*dim, dim);
+  //   printvec(cluster_centers + i*dim, dim);
   
   cout<<"Cluster Assigned"<<endl;
   }
@@ -316,20 +331,26 @@ int main(int argc, char* argv[]){
     finaldata = finalarray.data();
     f.close();
 
-    /*
-    for (int i = 0; i < N*dim; i++){
-      cout<<finaldata[i]<<" "<<mpirank<<endl;
-    }*/
-    
-    // int nclusters = sscanf(argv[2]);
-    
-    int nclusters = 3;
+    int nthreads = 8;
+    omp_set_num_threads(nthreads);
+    // if (mpirank == 0)
+    // #pragma omp parallel
+    // {
+    //   cout<<"No of threads "<<omp_get_num_threads()<<" Process "<<mpirank<<endl;
+    // }
+    int nclusters;
 
+    sscanf(argv[2], "%d", &nclusters);
+        
     MPI_Barrier(MPI_COMM_WORLD);
     double tt = MPI_Wtime();
 
+    if (mpirank == 0)
+      cout<<"Clusters"<<nclusters<<endl;
+
+    int final_epoch = 1;
     int *curr_assignment = (int *)calloc(N, sizeof(int));
-    int final_epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment);
+    final_epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment);
     double elapsed = MPI_Wtime() - tt;
   
     if (0 == mpirank) {

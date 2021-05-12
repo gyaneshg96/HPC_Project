@@ -205,10 +205,10 @@ int main(int argc, char* argv[]){
       cout<<endl;
     }*/
 
-
-    // int nclusters = sscanf(argv[2]);
-    int nclusters = 3;
-
+    int nclusters;
+     
+    sscanf(argv[2], "%d", &nclusters);
+    
     Timer tt;
     tt.tic();
 
@@ -217,7 +217,6 @@ int main(int argc, char* argv[]){
     double elapsed = tt.toc();
     printf("Time elapsed  per epoch is %f seconds.\n", elapsed/epoch);
     
-    // free(finaldata);
     f.close();
   }
   return 0;
