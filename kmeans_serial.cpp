@@ -110,43 +110,47 @@ void updateCentroids(int *cluster_assignment, double *points, double *cluster_ce
   // printvec(cluster_centers[0], dim);
 
   for (int i = 0; i < nclusters; i++){
-    divide(&cluster_centers[i*dim], cluster_nums[i], dim*nclusters);
+    divide(&cluster_centers[i*dim], cluster_nums[i], dim);
   }
 
   free(cluster_nums);
 }
 
 
-int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int* curr_assignment){  
+int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int* curr_assignment, Timer tt){  
   int epoch = 0;
-  double *cluster_centers = initialize(points, N, dim, nclusters, "kmeans++");
 
-  cout<<"Init"<<endl;
+  tt.tic();
+  double *cluster_centers = initialize(points, N, dim, nclusters, "forgy");
+
+  cout<<"Initialization time: "<<tt.toc()<<endl;
 
   clusterAssignment(points, curr_assignment, cluster_centers, dim, N, nclusters);
   
   // for (int i = 0; i < nclusters; i++)
   //   printvec(cluster_centers + i*dim, dim);
 
-  cout<<"Cluster Assigned"<<endl;
   //all zero
   int *prev_assignment = (int *)calloc(N, sizeof(int));
 
+  cout<<"Epoch \t"<<"Time Taken"<<endl;
   // while(compareAssignment(prev_assignment, curr_assignment, N) && epoch < epochs){
   while(epoch < epochs && memcmp(prev_assignment, curr_assignment, N*sizeof(int)) ){
 
     //update the centroids
+    tt.tic();
     updateCentroids(curr_assignment, points, cluster_centers, dim, N, nclusters);
     
     // for (int i = 0; i < nclusters; i++)
     //   printvec(&cluster_centers[i*dim], dim);
 
     memcpy(prev_assignment, curr_assignment, N*sizeof(int));
-
+  
     clusterAssignment(points, curr_assignment, cluster_centers, dim, N, nclusters);
     epoch++;
     // printvec2(curr_assignment, N);
-    cout<<"Epoch "<<epoch<<endl;
+    tt.toc();
+    cout<<epoch<<"\t"<<tt.toc()<<endl;
   }
   return epoch;
 }
@@ -160,10 +164,48 @@ int main(int argc, char* argv[]){
   int dim = 0;
   long N = 0;
 
-  
+  int nclusters;  
 
-  if (argc == 1){
-    //random generate
+  Timer tt;
+  tt.tic();
+
+  if (argc == 2){
+    //use our image dataset in hpcdata folder
+    string foldername = "hpcdata/";
+    long nfiles = 20;
+    long n = 20;
+    for (long i = 0; i < 20; i++){
+      // cout<<i<<endl;
+      string filename = "hpcdata/"+ to_string(i*25600)+".csv";
+      ifstream f (filename);
+      if (!f.is_open()) {     /* validate file open for reading */
+        perror (("error while opening file " + string(argv[1])).c_str());
+        return 1;
+      }
+
+      while (getline(f, line)) {         /* read each line */
+        string val;                     /* string to hold value */
+        stringstream s (line);
+        vector<double> row;
+        while (getline(s, val, ',')){
+            try {
+              double dval = stod(val);
+              row.push_back(dval);
+            }
+            catch (exception& e){
+              //do nothing
+            }
+          }
+        if (dim == 0)
+          dim = row.size();
+        if (dim > 0){
+            finalarray.insert(finalarray.end(), row.begin(), row.end());
+          N++;
+        }
+    }
+    f.close();
+    }
+    sscanf(argv[1], "%d", &nclusters);
   }
   else {
   ifstream f (argv[1]);   /* open file */
@@ -190,13 +232,17 @@ int main(int argc, char* argv[]){
         if (dim > 0)
           finalarray.insert(finalarray.end(), row.begin(), row.end());
     }
-
+    sscanf(argv[2], "%d", &nclusters);
+    f.close();
+  }
+    
+    cout<<"Reading Time: "<<tt.toc()<<endl;
     N = finalarray.size();
 
     N = N/dim;
     
     double* finaldata = finalarray.data();
-
+    
     /*
     cout << "complete array\n\n";
     for (int i = 0; i < N ; i++) {           
@@ -205,19 +251,12 @@ int main(int argc, char* argv[]){
       cout<<endl;
     }*/
 
-    int nclusters;
      
-    sscanf(argv[2], "%d", &nclusters);
-    
-    Timer tt;
     tt.tic();
-
     int *curr_assignment = (int *)calloc(N, sizeof(int));
-    int epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment);
-    double elapsed = tt.toc();
-    printf("Time elapsed  per epoch is %f seconds.\n", elapsed/epoch);
+    int epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment, tt);
+    // double elapsed = tt.toc();
+    // printf("Time elapsed  per epoch is %f seconds.\n", elapsed/epoch);
     
-    f.close();
-  }
   return 0;
 }

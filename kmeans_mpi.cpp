@@ -238,26 +238,30 @@ int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int 
   int epoch = 0;
 
   //initialize cluster centers
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  double tt = MPI_Wtime();
   double *cluster_centers = initialize(points, N, dim, nclusters, "forgy");
 
-  if (mpirank == 0)
-    cout<<"Init"<<endl;
+  if (mpirank == 0){
+    cout<<"Initialization Time :"<<MPI_Wtime() - tt<<endl;
+  }
 
 
 
   clusterAssignment(points, curr_assignment, cluster_centers, dim, N, nclusters);
   
+ 
   if (mpirank == 0){
-  // for (int i = 0; i < nclusters; i++)
-  //   printvec(cluster_centers + i*dim, dim);
-  
-  cout<<"Cluster Assigned"<<endl;
+    cout<<"Epoch\t"<<"Time Taken"<<endl;
   }
 
   int *prev_assignment = (int *)calloc(N, sizeof(int));
   while(epoch < epochs && hasConverged(prev_assignment, curr_assignment, N)){
 
     //update the centroids
+    MPI_Barrier(MPI_COMM_WORLD);
+    tt = MPI_Wtime();
     updateCentroids(curr_assignment, points, cluster_centers, dim, N, nclusters);
     
     // if (mpirank == 0){
@@ -271,8 +275,7 @@ int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int 
     epoch++;
 
     if (mpirank == 0){
-    // printvec2(curr_assignment, N);
-    cout<<"Epoch "<<epoch<<endl;
+      cout<<epoch<<"\t"<<MPI_Wtime() - tt<<endl;
     }
   }
   // printvec2(curr_assignment,N);
@@ -292,9 +295,48 @@ int main(int argc, char* argv[]){
 
   int dim = 0;
   long N = 0;
+  int nclusters;
 
-  if (argc == 1){
-    //random generate
+  MPI_Barrier(MPI_COMM_WORLD);
+
+  double tt = MPI_Wtime();
+  if (argc == 2){
+    //use on our dataset
+    long n = 20;
+    if (n % p == 0){
+    for (long i = mpirank; i < 20; i=i+p){
+      string filename = "hpcdata/"+ to_string(i*25600)+".csv";
+      ifstream f (filename);
+      // cout<<mpirank<<" "<<i<<" "<<endl;
+      if (!f.is_open()) {     /* validate file open for reading */
+        perror (("error while opening file " + string(argv[1])).c_str());
+        return 1;
+      }
+
+      while (getline(f, line)) {         /* read each line */
+        string val;                     /* string to hold value */
+        stringstream s (line);
+        vector<double> row;
+        while (getline(s, val, ',')){
+            try {
+              double dval = stod(val);
+              row.push_back(dval);
+            }
+            catch (exception& e){
+              //do nothing
+            }
+          }
+        if (dim == 0)
+          dim = row.size();
+        if (dim > 0){
+            finalarray.insert(finalarray.end(), row.begin(), row.end());
+          N++;
+        }
+    }
+    sscanf(argv[1], "%d", &nclusters);
+    f.close();
+    }
+  }
   }
   else {
     ifstream f (argv[1]);   /* open file */
@@ -324,12 +366,19 @@ int main(int argc, char* argv[]){
           N++;
         }
     }
-    N = finalarray.size();
+    sscanf(argv[2], "%d", &nclusters);
+    f.close();
+  }
 
+    if (mpirank == 0)
+    cout<<"Reading Time: "<<MPI_Wtime() - tt<<endl;
+    
+    N = finalarray.size();
+  
     N = N/dim;
     
     finaldata = finalarray.data();
-    f.close();
+    // f.close();
 
     int nthreads = 8;
     omp_set_num_threads(nthreads);
@@ -338,27 +387,20 @@ int main(int argc, char* argv[]){
     // {
     //   cout<<"No of threads "<<omp_get_num_threads()<<" Process "<<mpirank<<endl;
     // }
-    int nclusters;
 
-    sscanf(argv[2], "%d", &nclusters);
         
-    MPI_Barrier(MPI_COMM_WORLD);
-    double tt = MPI_Wtime();
-
+    
     if (mpirank == 0)
-      cout<<"Clusters"<<nclusters<<endl;
+      cout<<"Clusters: "<<nclusters<<endl;
 
     int final_epoch = 1;
     int *curr_assignment = (int *)calloc(N, sizeof(int));
     final_epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment);
-    double elapsed = MPI_Wtime() - tt;
   
-    if (0 == mpirank) {
-      printf("Time elapsed per epoch is %f seconds.\n", elapsed/final_epoch);
-    }
+    // if (0 == mpirank) {
+      // printf("Time elapsed per epoch is %f seconds.\n", elapsed/final_epoch);
+    // }
     
-    f.close();
-  }
   MPI_Finalize();
   return 0;
 }
