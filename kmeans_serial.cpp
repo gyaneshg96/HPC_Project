@@ -119,6 +119,7 @@ void updateCentroids(int *cluster_assignment, double *points, double *cluster_ce
 
 int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int* curr_assignment, Timer tt, string init){  
   int epoch = 0;
+  double total = 0.0;
 
   tt.tic();
   double *cluster_centers = initialize(points, N, dim, nclusters, init);
@@ -149,9 +150,14 @@ int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int*
     clusterAssignment(points, curr_assignment, cluster_centers, dim, N, nclusters);
     epoch++;
     // printvec2(curr_assignment, N);
-    tt.toc();
+    total += tt.toc();
     cout<<epoch<<"\t"<<tt.toc()<<endl;
   }
+  double flops_per_epoch = N*dim + nclusters*dim + N*nclusters*(2*dim + 1); 
+  double size = N*dim*sizeof(double) + 2*N*sizeof(int) + nclusters*dim*sizeof(double); 
+  cout<<"Average Time: "<<total/epoch<<endl;
+  cout<<"GFlops/s: "<<flops_per_epoch * epoch / (total * 1e9)<<endl;
+  cout<<"Bandwidth in GB/s: "<<size * epoch / (total * 1e9)<<endl;
   return epoch;
 }
 
@@ -248,7 +254,7 @@ int main(int argc, char* argv[]){
     cout<<"Init: "<<init<<endl;
 
     N = N/dim;
-    
+    cout<<N<<" "<<dim<<endl; 
     double* finaldata = finalarray.data();
     
     /*
@@ -261,7 +267,7 @@ int main(int argc, char* argv[]){
      
     tt.tic();
     int *curr_assignment = (int *)calloc(N, sizeof(int));
-    int epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment, tt, init);
+    int epoch = trainKMeans(50, finaldata, N, dim, nclusters, curr_assignment, tt, init);
     // double elapsed = tt.toc();
     // printf("Time elapsed  per epoch is %f seconds.\n", elapsed/epoch);
     

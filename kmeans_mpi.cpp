@@ -236,6 +236,7 @@ int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int 
   MPI_Comm_size(MPI_COMM_WORLD, &p);
 
   int epoch = 0;
+  double total = 0.0;
 
   //initialize cluster centers
   MPI_Barrier(MPI_COMM_WORLD);
@@ -274,9 +275,18 @@ int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int 
     clusterAssignment(points, curr_assignment, cluster_centers, dim, N, nclusters);
     epoch++;
 
+    total += MPI_Wtime() - tt;
     if (mpirank == 0){
       cout<<epoch<<"\t"<<MPI_Wtime() - tt<<endl;
     }
+  }
+
+  double flops_per_epoch = N*dim + nclusters*dim + N*nclusters*(2*dim + 1); 
+  double size = N*dim*sizeof(double) + 2*N*sizeof(int) + nclusters*dim*sizeof(double); 
+  if (mpirank == 0){
+  cout<<"Average Time: "<<total/epoch<<endl;
+  cout<<"GFlops/s: "<<flops_per_epoch * p * epoch / (total * 1e9)<<endl;
+  cout<<"Bandwidth in GB/s: "<<size * epoch / (total * 1e9)<<endl;
   }
   // printvec2(curr_assignment,N);
   return epoch;
@@ -404,7 +414,7 @@ int main(int argc, char* argv[]){
 
     int final_epoch = 1;
     int *curr_assignment = (int *)calloc(N, sizeof(int));
-    final_epoch = trainKMeans(20, finaldata, N, dim, nclusters, curr_assignment, init);
+    final_epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment, init);
   
     // if (0 == mpirank) {
       // printf("Time elapsed per epoch is %f seconds.\n", elapsed/final_epoch);
