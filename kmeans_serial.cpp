@@ -117,11 +117,11 @@ void updateCentroids(int *cluster_assignment, double *points, double *cluster_ce
 }
 
 
-int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int* curr_assignment, Timer tt){  
+int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int* curr_assignment, Timer tt, string init){  
   int epoch = 0;
 
   tt.tic();
-  double *cluster_centers = initialize(points, N, dim, nclusters, "forgy");
+  double *cluster_centers = initialize(points, N, dim, nclusters, init);
 
   cout<<"Initialization time: "<<tt.toc()<<endl;
 
@@ -169,18 +169,23 @@ int main(int argc, char* argv[]){
   Timer tt;
   tt.tic();
 
-  if (argc == 2){
+  int mode;
+  //0 for folder containing csv
+  //1 for csv file
+  string init;
+
+  sscanf(argv[1], "%d", &mode);
+  if (mode == 0){
     //use our image dataset in hpcdata folder
-    string foldername = "hpcdata/";
-    long nfiles = 20;
-    long n = 20;
+    // string foldername = "hpcdata/";
+    string foldername = string(argv[2]);
     for (long i = 0; i < 20; i++){
       // cout<<i<<endl;
-      string filename = "hpcdata/"+ to_string(i*25600)+".csv";
+      string filename = foldername + to_string(i)+".csv";
       ifstream f (filename);
       if (!f.is_open()) {     /* validate file open for reading */
-        perror (("error while opening file " + string(argv[1])).c_str());
-        return 1;
+        perror (("error while opening file " + filename).c_str());
+        // return 1;
       }
 
       while (getline(f, line)) {         /* read each line */
@@ -205,12 +210,13 @@ int main(int argc, char* argv[]){
     }
     f.close();
     }
-    sscanf(argv[1], "%d", &nclusters);
+    sscanf(argv[3], "%d", &nclusters);
+    init = string(argv[4]);
   }
   else {
-  ifstream f (argv[1]);   /* open file */
+  ifstream f (argv[2]);   /* open file */
     if (!f.is_open()) {     /* validate file open for reading */
-        perror (("error while opening file " + string(argv[1])).c_str());
+        perror (("error while opening file " + string(argv[2])).c_str());
         return 1;
     }
 
@@ -232,12 +238,14 @@ int main(int argc, char* argv[]){
         if (dim > 0)
           finalarray.insert(finalarray.end(), row.begin(), row.end());
     }
-    sscanf(argv[2], "%d", &nclusters);
+    sscanf(argv[3], "%d", &nclusters);
+    init = string(argv[4]);
     f.close();
   }
     
     cout<<"Reading Time: "<<tt.toc()<<endl;
     N = finalarray.size();
+    cout<<"Init: "<<init<<endl;
 
     N = N/dim;
     
@@ -250,11 +258,10 @@ int main(int argc, char* argv[]){
         cout << finaldata[i*dim + j] << "  ";
       cout<<endl;
     }*/
-
      
     tt.tic();
     int *curr_assignment = (int *)calloc(N, sizeof(int));
-    int epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment, tt);
+    int epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment, tt, init);
     // double elapsed = tt.toc();
     // printf("Time elapsed  per epoch is %f seconds.\n", elapsed/epoch);
     

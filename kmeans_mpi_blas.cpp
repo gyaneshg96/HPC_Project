@@ -245,7 +245,7 @@ int hasConverged(int *prev_assignment, int *curr_assignment, long N){
 }
 
 //method which calls KMeans
-int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int *curr_assignment){
+int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int *curr_assignment, string init){
 
   int mpirank, p;
   MPI_Comm_rank(MPI_COMM_WORLD, &mpirank);
@@ -257,7 +257,7 @@ int trainKMeans(int epochs, double *points, long N, int dim, int nclusters, int 
   MPI_Barrier(MPI_COMM_WORLD);
 
   double tt = MPI_Wtime();
-  double *cluster_centers = initialize(points, N, dim, nclusters, "kmeans++");
+  double *cluster_centers = initialize(points, N, dim, nclusters, init);
 
   if (mpirank == 0){
     // for (int i = 0; i<nclusters; i++)
@@ -314,20 +314,25 @@ int main(int argc, char* argv[]){
   int dim = 0;
   long N = 0;
   int nclusters;
+  string init;
+  int mode;
+
+  sscanf(argv[1], "%d", &mode);
 
   MPI_Barrier(MPI_COMM_WORLD);
 
   double tt = MPI_Wtime();
-  if (argc == 2){
-    //use on our dataset
+  if (mode == 0){
+    //use on folder
     long n = 20;
+    string folder = string(argv[2]);
     if (n % p == 0){
     for (long i = mpirank; i < 20; i=i+p){
-      string filename = "hpcdata/"+ to_string(i*25600)+".csv";
+      string filename = folder + to_string(i)+".csv";
       ifstream f (filename);
       // cout<<mpirank<<" "<<i<<" "<<endl;
       if (!f.is_open()) {     /* validate file open for reading */
-        perror (("error while opening file " + string(argv[1])).c_str());
+        perror (("error while opening file " + string(argv[2])).c_str());
         return 1;
       }
 
@@ -351,15 +356,16 @@ int main(int argc, char* argv[]){
           N++;
         }
     }
-    sscanf(argv[1], "%d", &nclusters);
     f.close();
     }
   }
+  sscanf(argv[3], "%d", &nclusters);
+  init = string(argv[4]);
   }
   else {
-    ifstream f (argv[1]);   /* open file */
+    ifstream f (argv[2]);   /* open file */
     if (!f.is_open()) {     /* validate file open for reading */
-        perror (("error while opening file " + string(argv[1])).c_str());
+        perror (("error while opening file " + string(argv[2])).c_str());
         return 1;
     }
 
@@ -384,13 +390,16 @@ int main(int argc, char* argv[]){
           N++;
         }
     }
-    sscanf(argv[2], "%d", &nclusters);
+    sscanf(argv[3], "%d", &nclusters);
+    init = string(argv[4]);
     f.close();
   }
 
-    if (mpirank == 0)
+    if (mpirank == 0){
     cout<<"Reading Time: "<<MPI_Wtime() - tt<<endl;
-    
+    cout<<"Initialization: "<<init<<endl;
+    }
+  
     N = finalarray.size();
   
     N = N/dim;
@@ -413,7 +422,7 @@ int main(int argc, char* argv[]){
 
     int final_epoch = 1;
     int *curr_assignment = (int *)calloc(N, sizeof(int));
-    final_epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment);
+    final_epoch = trainKMeans(100, finaldata, N, dim, nclusters, curr_assignment, init);
   
     // if (0 == mpirank) {
       // printf("Time elapsed per epoch is %f seconds.\n", elapsed/final_epoch);
