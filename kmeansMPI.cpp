@@ -172,8 +172,8 @@ void read_csv(const string& filename, vector<Data>& dataset) {
 int main(int argc, char* argv[]) {
 	MPI_Init(&argc, &argv);
 
-	if (argc < 2) {
-		printf("Usage: ./kmeans <# of clusters>\n");
+	if (argc < 4) {
+		printf("Usage: ./kmeans <# of clusters> <no of data> <dimension>\n");
 		exit(1);
 	}
 
@@ -186,7 +186,10 @@ int main(int argc, char* argv[]) {
 	MPI_Comm_size(comm, &size);
 	
 	vector<Data> dataset;
-	
+        const int N = atoi(argv[2]);
+	const int M = atoi(argv[3]);
+        int elements_per_proc = N / size;
+
 	// 0. read data from data.csv file
 	if (rank == ROOT) {
 		read_csv("data.csv", dataset);
@@ -194,9 +197,9 @@ int main(int argc, char* argv[]) {
 	}
 
 	// 1. assign N/P data to each processor
-	const int N = dataset.size();
-	const int M = dataset[0].size();
-	int elements_per_proc = dataset.size() / size;
+	//const int N = dataset.size();
+	//const int M = dataset[0].size();
+	//int elements_per_proc = dataset.size() / size;
 	
 	MPI_Datatype MPI_data;
 	MPI_Type_vector(N, M, M, MPI_DOUBLE, &MPI_data);
@@ -204,7 +207,9 @@ int main(int argc, char* argv[]) {
 	
 	vector<Data> subarray(elements_per_proc);
 	vector<int> membership(elements_per_proc, -1);
-
+	
+	MPI_Barrier(MPI_COMM_WORLD);
+	printf("Rank %d: scatter dataset to each processor\n", rank);
 	MPI_Scatter(&dataset[0], elements_per_proc, MPI_data, &subarray[0], elements_per_proc, MPI_data, ROOT, MPI_COMM_WORLD);
 	/*for (int i = 0; i < elements_per_proc; ++i) {
 		subarray[i] = dataset[rank * elements_per_proc + i];
@@ -215,6 +220,7 @@ int main(int argc, char* argv[]) {
 	if (rank == ROOT) initializeCentroids(subarray, local_means);
 	
 	
+	printf("Rank %d: broadcast k means\n", rank);
 	MPI_Barrier(comm);	
 	MPI_Bcast(&local_means[0], K, MPI_data, ROOT, MPI_COMM_WORLD);
 	MPI_Barrier(comm);
@@ -254,8 +260,8 @@ int main(int argc, char* argv[]) {
 
 		// 5. globally broadcast all local means for each processor to find the global mean
 		vector<Data> all_local_means(size * K);
-		MPI_Allgather(&local_means[0], K, MPI_data, &all_local_means[0], K, MPI_data, ROOT, MPI_COMM_WORLD); // only root has correct copy
-		
+		MPI_Allgather(&local_means[0], K, MPI_data, &all_local_means[0], K, MPI_data, MPI_COMM_WORLD);
+
 		// calculate global means
 		// 1.1 calculate sum of means from all processors
 		vector<Data> global_means(K, vector<double>(M, 0.0));
