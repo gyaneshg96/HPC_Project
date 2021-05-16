@@ -5,6 +5,7 @@
 #include <fstream>
 #include <sstream>
 #include <climits>
+#include <assert.h>
 #include <mpi.h>
 
 using namespace std;
@@ -73,7 +74,7 @@ while there is change in k centroids:
 	}
 }*/
 
-void output() {
+void output(const vector<Data>& centroids, const vector<int>& cluster) {
 	for (int i = 0; i < cluster.size(); ++i) printf("Data %d: cluser %d\n", i, cluster[i]);
 }
 
@@ -119,8 +120,8 @@ void newCentroids(const vector<Data>& dataset, vector<int>& cluster, vector<Data
 	}
 
 	// mean = sum / count
-	assert(newCentroids.size() == k);
-	for (int i = 0; i < k; ++i) {
+	// assert(newCentroids.size() == k);
+	for (int i = 0; i < centroids.size(); ++i) {
 		for (int j = 0; j < newCentroids[i].size(); ++j)
 			newCentroids[i][j] /= clusterSize[i];
 	}
@@ -185,7 +186,7 @@ int main(int argc, char* argv[]) {
 	MPI_Comm_size(comm, &size);
 
 	MPI_Datatype data_type;
-	MPI_Type_something(Data, &data_type);
+	MPI_Type_something(vector<double>, &data_type);
 	MPI_Type_commit( &data_type );
 	/* code that uses your new type */
 
@@ -207,7 +208,7 @@ int main(int argc, char* argv[]) {
 	vector<int> membership(elements_per_proc, -1);
 
 	for (int i = 0; i < elements_per_proc; ++i) {
-		subarray[i] = dataset(rank * elements_per_proc + i);
+		subarray[i] = dataset[rank * elements_per_proc + i];
 	}
 
 	// 2. Node 0 randomly choose K points as cluster means and broadcast
@@ -217,7 +218,7 @@ int main(int argc, char* argv[]) {
 	MPI_Bcast(&local_means[0], K, data_type, ROOT, MPI_COMM_WORLD);
 
 	int iter = 0;
-	double changedPercent = 1.0
+	double changedPercent = 1.0;
 
 	while(iter < 10000 && changedPercent > 0.001) {
 		// 3. for each data point find membership 
@@ -259,7 +260,9 @@ int main(int argc, char* argv[]) {
 			}
 
 				// 1.2 mean = sum of means / number of processors
-			for (int i = 0; i < K; ++i) global_means /= size;
+			for (int i = 0; i < K; ++i) {
+				for (int j = 0; j < M; ++j) global_means[i][j] /= size;
+			}
 
 			// 2. broadcast to all processors
 			MPI_Bcast(&global_means[0], K, data_type, ROOT, MPI_COMM_WORLD);
