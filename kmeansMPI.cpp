@@ -10,93 +10,31 @@
 
 using namespace std;
 
-typedef vector<double> Data;
-
-/****** K-means algorithm
-random select k data centroids
-while there is change in k centroids:
-
-	for each data in dataset:
-		mini distacnce
-		for each centroid in k:
-			cal euclidean distance
-			update minimum distance
-
-		assign data to nearest cluster
-
-	calculate the mean of each cluster as next centroid (each cluster stays on one thread)
-*******/
-
-
-/*void solution(const vector<Data>& dataset) {
-	cluster.resize(dataset.size(), -1);
-	initializeCentroids(dataset);
-	// printf("created %lu centroids\n", centroids.size());
-	// for (int i = 0; i < centroids.size(); ++i) {
-	// 	printf("Centroid %d:", i);
-	// 	printData(centroids[i]);
-	// }
-
-	int iter = 0; // for debug use
-	double changedPercent = 1.0;
-
-	while(iter < 10000 && changedPercent >= 0.001) {
-		int memberChanged = 0; // count number of data that has changed memebership
-
-		for (int i = 0; i < dataset.size(); ++i) {
-			double minDistance = INT_MAX;
-			int closestCentroid;
-
-			for (int j = 0; j < centroids.size(); ++j) {
-				double distance = getDistance(centroids[j], dataset[i]);
-				if (distance <= minDistance) {
-					minDistance = distance;
-					closestCentroid = j;
-				}
-			}
-
-			// printf("new centroid: %d\n", closestCentroid);
-
-			if (closestCentroid != cluster[i]) {
-				cluster[i] = closestCentroid;
-				memberChanged++;
-			}
-			
-			// printf("Data %d belongs to cluster %d\n", i, closestCentroid);
-		}
-
-		// calculate the mean of each cluster as next centroid (each cluster stays on one thread)
-		newCentroids(dataset);
-		
-		changedPercent = (double) memberChanged / dataset.size();
-		printf("iteration %d: %d, %7.3f\n", iter, memberChanged, changedPercent);
-		iter++;
-	}
-}*/
+// typedef vector<double> Data;
 
 void output(const vector<Data>& centroids, const vector<int>& cluster) {
 	for (int i = 0; i < cluster.size(); ++i) printf("Data %d: cluser %d\n", i, cluster[i]);
 }
 
-void printData(const Data& data) {
-	for (int i = 0; i < data.size(); ++i) cout << data[i] << " ";
+void printData(double* data, int size) {
+	for (int i = 0; i < size; ++i) cout << *data++ << " ";
 	cout << endl;
 }
 
 // random select k centroids
-void initializeCentroids(const vector<Data>& dataset, vector<Data>& centroids) {
+void initializeCentroids(double* dataset, double* centroids, int N, int K, int M) {
+	centroids = (double*) malloc(K * M * sizeof(double));
 	srand(time(0));
 	int index;
-	for (int i = 0; i < centroids.size(); ++i) {
-		index = rand() % dataset.size();
-		centroids[i] = dataset[index];
+	for (int i = 0; i < K; ++i) {
+		index = rand() % N;
+		for (int j = 0; j < M; ++j) centroids[i * M + j] = dataset[index * M + j];
 	}
 }
 
-double getDistance(const Data& centroid, const Data& data) {
-	assert(centroid.size() == data.size());
+double getDistance(double* centroid, double* data, int M) {
 	double squareDistance = 0.0;
-	for (int i = 0; i < data.size(); ++i) {
+	for (int i = 0; i < M; ++i) {
 		squareDistance += (data[i] - centroid[i]) * (data[i] - centroid[i]);
 	}
 	return sqrt(squareDistance);
@@ -105,32 +43,31 @@ double getDistance(const Data& centroid, const Data& data) {
 
 // 1. calculate mean of each cluster as new centroid
 // 2. store new centroids
-void newCentroids(const vector<Data>& dataset, vector<int>& cluster, vector<Data>& centroids) {
-	vector<Data> newCentroids(centroids.size(), vector<double>(dataset[0].size(), 0.0));
-	vector<int> clusterSize(centroids.size(), 0);
+void newCentroids(double* dataset, vector<int>& cluster, double* centroids, int N, int M, int K) {
+	for (int i = 0; i < K * M; ++i) centroids[i] = 0.0;
+
+	vector<int> clusterSize(K, 0);
 	int clusterId;
 
-	for (int i = 0; i < dataset.size(); ++i) {// for each data
+	for (int i = 0; i < N; ++i) {// for each data
 		// cluster[i] -> cluster id
 		clusterId = cluster[i];
 		clusterSize[clusterId]++;
-		for (int j = 0; j < dataset[i].size(); ++j) {// for each dimension
-			newCentroids[clusterId][j] += dataset[i][j];
+		for (int j = 0; j < M; ++j) {// for each dimension
+			centroids[clusterId * M + j] += dataset[i * M + j];
 		}
 	}
 
 	// mean = sum / count
 	// assert(newCentroids.size() == k);
-	for (int i = 0; i < centroids.size(); ++i) {
-		for (int j = 0; j < newCentroids[i].size(); ++j)
-			newCentroids[i][j] /= clusterSize[i];
+	for (int i = 0; i < K; ++i) {
+		for (int j = 0; j < M; ++j)
+			centroids[i*M + j] /= clusterSize[i];
 	}
-
-	centroids = newCentroids;
 }
 
 
-void read_csv(const string& filename, vector<Data>& dataset) {
+void read_csv(const string& filename, double* dataset, int N, int M) {
 
     // Create an input filestream
     ifstream myFile(filename);
@@ -146,22 +83,19 @@ void read_csv(const string& filename, vector<Data>& dataset) {
     int val;
 
     // Read data, line by line
+	int i = 0;
     while(getline(myFile, line)) {
         // Create a stringstream of the current line
         stringstream ss(line);
         
-        Data data;
-        
         // Extract each integer
         while(ss >> val){
-            
-            data.push_back(val);
+            data[i++] = val;
             
             // If the next token is a comma, ignore it and move on
             if(ss.peek() == ',') ss.ignore();
            
         }
-        dataset.push_back(data);
     }
 
     // Close file
@@ -185,44 +119,42 @@ int main(int argc, char* argv[]) {
 	MPI_Comm_rank(comm, &rank);
 	MPI_Comm_size(comm, &size);
 	
-	vector<Data> dataset;
-        const int N = atoi(argv[2]);
+    const int N = atoi(argv[2]);
 	const int M = atoi(argv[3]);
-        int elements_per_proc = N / size;
+    int elements_per_proc = N / size;
+
+	// Store data as 1D array
+	double* dataset;
 
 	// 0. read data from data.csv file
 	if (rank == ROOT) {
+		dataset = (double*) malloc(N * M * sizeof(double));
 		read_csv("data.csv", dataset);
-		printf("loaded %lu data with dimension of %lu from %s file\n", dataset.size(), dataset[0].size(), "data.csv");
+		printf("loaded %lu data with dimension of %lu from %s file\n", N, M, "data.csv");
 	}
 
 	// 1. assign N/P data to each processor
-	//const int N = dataset.size();
-	//const int M = dataset[0].size();
-	//int elements_per_proc = dataset.size() / size;
 	
-	MPI_Datatype MPI_data;
-	MPI_Type_vector(N, M, M, MPI_DOUBLE, &MPI_data);
-	MPI_Type_commit(&MPI_data);
+	// MPI_Datatype MPI_data;
+	// MPI_Type_vector(N, M, M, MPI_DOUBLE, &MPI_data);
+	// MPI_Type_commit(&MPI_data);
 	
-	vector<Data> subarray(elements_per_proc);
+	// vector<Data> subarray(elements_per_proc);
+	double* subarray = (double*) malloc(elements_per_proc * M * sizeof(double));
 	vector<int> membership(elements_per_proc, -1);
 	
 	MPI_Barrier(MPI_COMM_WORLD);
 	printf("Rank %d: scatter dataset to each processor\n", rank);
-	MPI_Scatter(&dataset[0], elements_per_proc, MPI_data, &subarray[0], elements_per_proc, MPI_data, ROOT, MPI_COMM_WORLD);
-	/*for (int i = 0; i < elements_per_proc; ++i) {
-		subarray[i] = dataset[rank * elements_per_proc + i];
-	}*/
+	MPI_Scatter(dataset, elements_per_proc * M, MPI_DOUBLE, subarray, elements_per_proc * M, MPI_DOUBLE, ROOT, MPI_COMM_WORLD);
 
 	// 2. Node 0 randomly choose K points as cluster means and broadcast
-	vector<Data> local_means(K);
+	double* local_means;
 	if (rank == ROOT) initializeCentroids(subarray, local_means);
 	
 	
 	printf("Rank %d: broadcast k means\n", rank);
 	MPI_Barrier(comm);	
-	MPI_Bcast(&local_means[0], K, MPI_data, ROOT, MPI_COMM_WORLD);
+	MPI_Bcast(local_means, K * M, MPI_DOUBLE, ROOT, MPI_COMM_WORLD);
 	MPI_Barrier(comm);
 
 	int iter = 0;
@@ -231,16 +163,16 @@ int main(int argc, char* argv[]) {
 	while(iter < 10000 && changedPercent > 0.001) {
 		// 3. for each data point find membership 
 		int memberChanged = 0;
-		for (int i = 0; i < subarray.size(); ++i) {
+		for (int i = 0; i < elements_per_proc; ++i) {
 			double minDistance = INT_MAX;
 			int closestCentroid;
 
-			for (int j = 0; j < local_means.size(); ++j) {
+			for (int j = 0; j < K; ++j) {
 				printf("RANK %d - COMPUTE distance between local means %d and subarray %d\n",rank, j, i);
-				printData(local_means[j]);
+				printData(&local_means[j * M], M);
 				printf("RANK %d\n", rank);
-				printData(subarray[i]);
-				double distance = getDistance(local_means[j], subarray[i]);
+				printData(&subarray[i * M], M);
+				double distance = getDistance(&local_means[j * M], &subarray[i * M], M);
 				if (distance <= minDistance) {
 					minDistance = distance;
 					closestCentroid = j;
@@ -259,28 +191,33 @@ int main(int argc, char* argv[]) {
 		newCentroids(subarray, membership, local_means);
 
 		// 5. globally broadcast all local means for each processor to find the global mean
-		vector<Data> all_local_means(size * K);
-		MPI_Allgather(&local_means[0], K, MPI_data, &all_local_means[0], K, MPI_data, MPI_COMM_WORLD);
+		// vector<Data> all_local_means(size);
+		double* all_local_means = (double*) malloc(size * K * M * sizeof(double));
+		MPI_Allgather(local_means, K * M, MPI_DOUBLE, all_local_means, K * M, MPI_DOUBLE, MPI_COMM_WORLD);
 
 		// calculate global means
 		// 1.1 calculate sum of means from all processors
-		vector<Data> global_means(K, vector<double>(M, 0.0));
-		for (int i = 0; i < all_local_means.size(); ++i) {
+		// vector<Data> global_means(K, vector<double>(M, 0.0));
+		for (int i = 0; i < K * M; ++i) local_means[i] = 0.0; // clear previous local means
+
+		
+		for (int i = 0; i < K; ++i) {
 			for (int j = 0; j < M; ++j) {
-				global_means[i % K][j] += all_local_means[i][j];
+				for (int p = 0; p < size; ++p) {
+					local_means[i * M + j] += all_local_means[p * K * M + i * M + j];
+				}
 			}
 		}
+		
 
 		// 1.2 mean = sum of means / number of processors
 		for (int i = 0; i < K; ++i) {
-			for (int j = 0; j < M; ++j) global_means[i][j] /= size;
+			for (int j = 0; j < M; ++j) local_means[i * M + j] /= size;
 		}
-
-		local_means = global_means;
 		
 	}
 
-	MPI_Type_free(&MPI_data);
+	// MPI_Type_free(&MPI_data);
 	MPI_Finalize();
 
 	return 0;
