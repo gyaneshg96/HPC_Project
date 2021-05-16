@@ -254,26 +254,24 @@ int main(int argc, char* argv[]) {
 
 		// 5. globally broadcast all local means for each processor to find the global mean
 		vector<Data> all_local_means(size * K);
-		MPI_Gather(&local_means[0], K, MPI_data, &all_local_means[0], K, MPI_data, ROOT, MPI_COMM_WORLD); // only root has correct copy
-		if (rank == ROOT) {
-			// 1. calculate global means
-				// 1.1 calculate sum of means from all processors
-			vector<Data> global_means(K, vector<double>(M, 0.0));
-			for (int i = 0; i < all_local_means.size(); ++i) {
-				for (int j = 0; j < M; ++j) {
-					global_means[i % K][j] += all_local_means[i][j];
-				}
+		MPI_Allgather(&local_means[0], K, MPI_data, &all_local_means[0], K, MPI_data, ROOT, MPI_COMM_WORLD); // only root has correct copy
+		
+		// calculate global means
+		// 1.1 calculate sum of means from all processors
+		vector<Data> global_means(K, vector<double>(M, 0.0));
+		for (int i = 0; i < all_local_means.size(); ++i) {
+			for (int j = 0; j < M; ++j) {
+				global_means[i % K][j] += all_local_means[i][j];
 			}
-
-				// 1.2 mean = sum of means / number of processors
-			for (int i = 0; i < K; ++i) {
-				for (int j = 0; j < M; ++j) global_means[i][j] /= size;
-			}
-
-			// 2. broadcast to all processors
-			MPI_Bcast(&global_means[0], K, MPI_data, ROOT, MPI_COMM_WORLD);
 		}
 
+		// 1.2 mean = sum of means / number of processors
+		for (int i = 0; i < K; ++i) {
+			for (int j = 0; j < M; ++j) global_means[i][j] /= size;
+		}
+
+		local_means = global_means;
+		
 	}
 
 	MPI_Type_free(&MPI_data);
