@@ -12,8 +12,8 @@ using namespace std;
 
 // typedef vector<double> Data;
 
-void output(const vector<int>& cluster) {
-	for (int i = 0; i < cluster.size(); ++i) printf("Data %d: cluser %d\n", i, cluster[i]);
+void output(int* cluster, int size) {
+	for (int i = 0; i < size; ++i) printf("Data %d: cluser %d\n", i, cluster[i]);
 }
 
 void printData(double* data, int size) {
@@ -223,7 +223,16 @@ int main(int argc, char* argv[]) {
 		iter++;
 	}
 
-	// MPI_Type_free(&MPI_data);
+	// Gather Cluster Result
+	int* global_membership;
+	if (rank == ROOT) {
+		global_membership = malloc(N * sizeof(int));
+	}
+	MPI_Gather(&membership[0], elements_per_proc, MPI_INT, global_membership, elements_per_proc, MPI_INT,
+				ROOT, MPI_COMM_WORLD);
+
+	if (rank == ROOT) output(global_membership, N);
+
 	MPI_Finalize();
 
 	return 0;
