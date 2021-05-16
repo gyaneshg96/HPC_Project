@@ -12,7 +12,7 @@ using namespace std;
 
 // typedef vector<double> Data;
 
-void output(const vector<Data>& centroids, const vector<int>& cluster) {
+void output(const vector<int>& cluster) {
 	for (int i = 0; i < cluster.size(); ++i) printf("Data %d: cluser %d\n", i, cluster[i]);
 }
 
@@ -35,7 +35,9 @@ void initializeCentroids(double* dataset, double* centroids, int N, int K, int M
 double getDistance(double* centroid, double* data, int M) {
 	double squareDistance = 0.0;
 	for (int i = 0; i < M; ++i) {
-		squareDistance += (data[i] - centroid[i]) * (data[i] - centroid[i]);
+		squareDistance += (*data - *centroid) * (*data - *centroid);
+		data++;
+		centroid++;
 	}
 	return sqrt(squareDistance);
 }
@@ -43,7 +45,7 @@ double getDistance(double* centroid, double* data, int M) {
 
 // 1. calculate mean of each cluster as new centroid
 // 2. store new centroids
-void newCentroids(double* dataset, vector<int>& cluster, double* centroids, int N, int M, int K) {
+void newCentroids(double* dataset, const vector<int>& cluster, double* centroids, int N, int K, int M) {
 	for (int i = 0; i < K * M; ++i) centroids[i] = 0.0;
 
 	vector<int> clusterSize(K, 0);
@@ -52,6 +54,7 @@ void newCentroids(double* dataset, vector<int>& cluster, double* centroids, int 
 	for (int i = 0; i < N; ++i) {// for each data
 		// cluster[i] -> cluster id
 		clusterId = cluster[i];
+		//printf("\t\tcluster id %d\n", clusterId);
 		clusterSize[clusterId]++;
 		for (int j = 0; j < M; ++j) {// for each dimension
 			centroids[clusterId * M + j] += dataset[i * M + j];
@@ -90,7 +93,7 @@ void read_csv(const string& filename, double* dataset, int N, int M) {
         
         // Extract each integer
         while(ss >> val){
-            data[i++] = val;
+            dataset[i++] = val;
             
             // If the next token is a comma, ignore it and move on
             if(ss.peek() == ',') ss.ignore();
@@ -120,7 +123,7 @@ int main(int argc, char* argv[]) {
 	MPI_Comm_size(comm, &size);
 	
     const int N = atoi(argv[2]);
-	const int M = atoi(argv[3]);
+    const int M = atoi(argv[3]);
     int elements_per_proc = N / size;
 
 	// Store data as 1D array
@@ -129,7 +132,7 @@ int main(int argc, char* argv[]) {
 	// 0. read data from data.csv file
 	if (rank == ROOT) {
 		dataset = (double*) malloc(N * M * sizeof(double));
-		read_csv("data.csv", dataset);
+		read_csv("data.csv", dataset, N, M);
 		printf("loaded %lu data with dimension of %lu from %s file\n", N, M, "data.csv");
 	}
 
@@ -148,8 +151,8 @@ int main(int argc, char* argv[]) {
 	MPI_Scatter(dataset, elements_per_proc * M, MPI_DOUBLE, subarray, elements_per_proc * M, MPI_DOUBLE, ROOT, MPI_COMM_WORLD);
 
 	// 2. Node 0 randomly choose K points as cluster means and broadcast
-	double* local_means;
-	if (rank == ROOT) initializeCentroids(subarray, local_means);
+	double* local_means = (double*) malloc(K * M * sizeof(double));
+	if (rank == ROOT) initializeCentroids(subarray, local_means, elements_per_proc, K, M);
 	
 	
 	printf("Rank %d: broadcast k means\n", rank);
@@ -168,18 +171,18 @@ int main(int argc, char* argv[]) {
 			int closestCentroid;
 
 			for (int j = 0; j < K; ++j) {
-				printf("RANK %d - COMPUTE distance between local means %d and subarray %d\n",rank, j, i);
-				printData(&local_means[j * M], M);
-				printf("RANK %d\n", rank);
-				printData(&subarray[i * M], M);
+				//printf("RANK %d - COMPUTE distance between local means %d and subarray %d\n",rank, j, i);
+				//printData(&local_means[j * M], M);
+				//printf("RANK %d\n", rank);
+				//printData(&subarray[i * M], M);
 				double distance = getDistance(&local_means[j * M], &subarray[i * M], M);
-				if (distance <= minDistance) {
+				if (distance < minDistance) {
 					minDistance = distance;
 					closestCentroid = j;
 				}
 			}
 
-			// printf("new centroid: %d\n", closestCentroid);
+			//printf("Rank %d - Data %d - new centroid: %d\n", rank, i, closestCentroid);
 
 			if (closestCentroid != membership[i]) {
 				membership[i] = closestCentroid;
@@ -188,7 +191,7 @@ int main(int argc, char* argv[]) {
 		}
 
 		// 4. Recalculate local means for each cluster in each processor
-		newCentroids(subarray, membership, local_means);
+		newCentroids(subarray, membership, local_means, elements_per_proc, K, M);
 
 		// 5. globally broadcast all local means for each processor to find the global mean
 		// vector<Data> all_local_means(size);
@@ -214,7 +217,10 @@ int main(int argc, char* argv[]) {
 		for (int i = 0; i < K; ++i) {
 			for (int j = 0; j < M; ++j) local_means[i * M + j] /= size;
 		}
-		
+
+		changedPercent = (double) memberChanged / elements_per_proc;
+		printf("iteration %d: %d, %7.3f\n", iter, memberChanged, changedPercent);
+		iter++;
 	}
 
 	// MPI_Type_free(&MPI_data);
