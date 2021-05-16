@@ -184,38 +184,40 @@ int main(int argc, char* argv[]) {
 	MPI_Comm comm = MPI_COMM_WORLD;
 	MPI_Comm_rank(comm, &rank);
 	MPI_Comm_size(comm, &size);
-
-	MPI_Datatype data_type;
-	MPI_Type_something(vector<double>, &data_type);
-	MPI_Type_commit( &data_type );
-	/* code that uses your new type */
-
 	
 	vector<Data> dataset;
 	
 	// 0. read data from data.csv file
-	// if (rank == 0) {
-	read_csv("data.csv", dataset);
-	printf("loaded %lu data with dimension of %lu from %s file\n", dataset.size(), dataset[0].size(), "data.csv");
-	// }
+	if (rank == ROOT) {
+		read_csv("data.csv", dataset);
+		printf("loaded %lu data with dimension of %lu from %s file\n", dataset.size(), dataset[0].size(), "data.csv");
+	}
 
 	// 1. assign N/P data to each processor
 	const int N = dataset.size();
 	const int M = dataset[0].size();
 	int elements_per_proc = dataset.size() / size;
-
+	
+	MPI_Datatype MPI_data;
+	MPI_Type_vector(N, M, M, MPI_DOUBLE, &MPI_data);
+	MPI_Type_commit(&MPI_data);
+	
 	vector<Data> subarray(elements_per_proc);
 	vector<int> membership(elements_per_proc, -1);
 
-	for (int i = 0; i < elements_per_proc; ++i) {
+	MPI_Scatter(&dataset[0], elements_per_proc, MPI_data, &subarray[0], elements_per_proc, MPI_data, ROOT, MPI_COMM_WORLD);
+	/*for (int i = 0; i < elements_per_proc; ++i) {
 		subarray[i] = dataset[rank * elements_per_proc + i];
-	}
+	}*/
 
 	// 2. Node 0 randomly choose K points as cluster means and broadcast
 	vector<Data> local_means(K);
 	if (rank == ROOT) initializeCentroids(subarray, local_means);
 	
-	MPI_Bcast(&local_means[0], K, data_type, ROOT, MPI_COMM_WORLD);
+	
+	MPI_Barrier(comm);	
+	MPI_Bcast(&local_means[0], K, MPI_data, ROOT, MPI_COMM_WORLD);
+	MPI_Barrier(comm);
 
 	int iter = 0;
 	double changedPercent = 1.0;
@@ -228,6 +230,10 @@ int main(int argc, char* argv[]) {
 			int closestCentroid;
 
 			for (int j = 0; j < local_means.size(); ++j) {
+				printf("RANK %d - COMPUTE distance between local means %d and subarray %d\n",rank, j, i);
+				printData(local_means[j]);
+				printf("RANK %d\n", rank);
+				printData(subarray[i]);
 				double distance = getDistance(local_means[j], subarray[i]);
 				if (distance <= minDistance) {
 					minDistance = distance;
@@ -248,7 +254,7 @@ int main(int argc, char* argv[]) {
 
 		// 5. globally broadcast all local means for each processor to find the global mean
 		vector<Data> all_local_means(size * K);
-		MPI_Gather(&local_means[0], K, data_type, &all_local_means[0], K, data_type, ROOT, MPI_COMM_WORLD); // only root has correct copy
+		MPI_Gather(&local_means[0], K, MPI_data, &all_local_means[0], K, MPI_data, ROOT, MPI_COMM_WORLD); // only root has correct copy
 		if (rank == ROOT) {
 			// 1. calculate global means
 				// 1.1 calculate sum of means from all processors
@@ -265,12 +271,12 @@ int main(int argc, char* argv[]) {
 			}
 
 			// 2. broadcast to all processors
-			MPI_Bcast(&global_means[0], K, data_type, ROOT, MPI_COMM_WORLD);
+			MPI_Bcast(&global_means[0], K, MPI_data, ROOT, MPI_COMM_WORLD);
 		}
 
 	}
 
-	MPI_Type_free(&data_type);
+	MPI_Type_free(&MPI_data);
 	MPI_Finalize();
 
 	return 0;

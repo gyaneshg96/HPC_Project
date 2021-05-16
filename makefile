@@ -1,2 +1,2 @@
 all:
-	mpic++ -std=c++11 -O3 -march=native -fopenmp kmeansMPI.cpp -o kmeansMPI
+	mpic++ -std=c++11 -O3 -march=native -fopenmp -g kmeansMPI.cpp -o kmeansMPI
