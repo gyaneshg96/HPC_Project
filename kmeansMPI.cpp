@@ -16,13 +16,14 @@ void printVec(int* data, int size);
 void initializeCentroids(double* dataset, double* centroids, int N, int K, int M);
 double getDistance(double* centroid, double* data, int M);
 void newCentroids(double* dataset, int* cluster, double* centroids, int* local_cluster_size, int N, int K, int M);
-void read_csv(const string& filename, double* dataset, int N, int M);
+void read_csv(const string& filename, double* dataset, int* label, int N, int M);
+double getAccuracy(int* label, int* global_membership, int N);
 
 int main(int argc, char* argv[]) {
 	MPI_Init(&argc, &argv);
 
-	if (argc < 4) {
-		printf("Usage: ./kmeans <# of clusters> <no of data> <dimension>\n");
+	if (argc < 5) {
+		printf("Usage: ./kmeans <# of clusters> <no of data> <dimension> <filename>\n");
 		exit(1);
 	}
 
@@ -39,12 +40,15 @@ int main(int argc, char* argv[]) {
 
 	// Store data as 1D array
 	double* dataset = NULL;
+	int* label = NULL;
 
 	// 0. read data from data.csv file
 	if (rank == ROOT) {
 		dataset = (double*) malloc(N * M * sizeof(double));
-		read_csv("data.csv", dataset, N, M);
+		label = (int*) malloc(N * sizeof(int));
+		read_csv(argv[4], dataset, label, N, M);
 		printf("loaded %lu data with dimension of %lu from %s file\n", N, M, "data.csv");
+		// printVec(label, N);
 	}
 
 	// 1. assign N/P data to each processor
@@ -81,7 +85,7 @@ int main(int argc, char* argv[]) {
 	double changedPercent = 1.0;
 
 
-	while(iter < 10000 && changedPercent > 0.001) {
+	while(iter < 10000 && changedPercent > 0.0001) {
 		// printf("RANK %d - iter%d - local means: ", rank, iter);
 		// printData(local_means, K * M);
 
@@ -179,6 +183,7 @@ int main(int argc, char* argv[]) {
 	if (rank == ROOT) {
 		printf("kmeans latency: %e ms\n", tt * 1000);
 		printf("kmeans bandwidth: %e GB/s\n", (N * M)/tt/1e9);
+		printf("kmeans accuracy: %e%%\n", getAccuracy(label, global_membership, N));
 	}
 	
 	free(dataset);
@@ -255,7 +260,7 @@ void newCentroids(double* dataset, int* cluster, double* centroids, int* local_c
 	}
 }
 
-void read_csv(const string& filename, double* dataset, int N, int M) {
+void read_csv(const string& filename, double* dataset, int* label, int N, int M) {
 
     // Create an input filestream
     ifstream myFile(filename);
@@ -272,20 +277,38 @@ void read_csv(const string& filename, double* dataset, int N, int M) {
 
     // Read data, line by line
 	int i = 0;
+	int row = 0;
     while(getline(myFile, line)) {
         // Create a stringstream of the current line
         stringstream ss(line);
         
         // Extract each integer
-        while(ss >> val){
-            dataset[i++] = val;
+        // while(ss >> val){
+        //     dataset[i++] = val;
+            
+        //     // If the next token is a comma, ignore it and move on
+        //     if(ss.peek() == ',') ss.ignore();
+           
+        // }
+		while(ss >> val){
+			if (i % (M + 1) == 0) label[row] = val;
+			else dataset[i - 1 * (row + 1)] = val;
             
             // If the next token is a comma, ignore it and move on
             if(ss.peek() == ',') ss.ignore();
            
+			++i;
         }
+
+		row++;
     }
 
     // Close file
     myFile.close();
+}
+
+double getAccuracy(int* label, int* global_membership, int N) {
+	int correct = 0;
+	for (int i = 0; i < N; ++i) correct += label[i] == global_membership[i];
+	return (double) correct / N;
 }

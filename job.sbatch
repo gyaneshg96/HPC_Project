@@ -12,4 +12,4 @@
 module purge 
 module load  amber/openmpi/intel/20.06 
 
-mpirun ./kmeansMPI 5 100 10
+mpirun -np 50 --oversubscribe ./kmeansMPI 10 42000 784 train.csv
