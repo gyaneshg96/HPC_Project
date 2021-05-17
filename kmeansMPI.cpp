@@ -43,7 +43,7 @@ int main(int argc, char* argv[]) {
 	// 0. read data from data.csv file
 	if (rank == ROOT) {
 		dataset = (double*) malloc(N * M * sizeof(double));
-		read_csv("data3.csv", dataset, N, M);
+		read_csv("data.csv", dataset, N, M);
 		printf("loaded %lu data with dimension of %lu from %s file\n", N, M, "data.csv");
 	}
 
@@ -74,9 +74,11 @@ int main(int argc, char* argv[]) {
 
 	int iter = 0;
 	double changedPercent = 1.0;
+	int* all_memberChanged = (int*) malloc(size * sizeof(int));
 	double* all_local_means = (double*) malloc(size * K * M * sizeof(double));
 	int* local_cluster_size = (int*) malloc(K * sizeof(int)); // key: cluster id, value: # of data
 	int* all_local_cluster_size = (int*) malloc(size * K * sizeof(int));
+
 
 	while(iter < 10000 && changedPercent > 0.001) {
 		// printf("RANK %d - iter%d - local means: ", rank, iter);
@@ -142,13 +144,21 @@ int main(int argc, char* argv[]) {
 			for (int j = 0; j < M; ++j) local_means[i * M + j] /= local_cluster_size[i];
 		}
 
-		changedPercent = (double) memberChanged / elements_per_proc;
-		// printf("RANK %d - iteration %d: %d, %7.3f\n", rank, iter, memberChanged, changedPercent);
-		printf("RANK %d - iteration %d:\n", rank, iter);
-		printData(subarray, elements_per_proc);
-		printVec(membership, elements_per_proc);
-		printData(local_means, K);
+		// 6. calculate global member changed
+		MPI_Allgather(&memberChanged, 1, MPI_INT, all_memberChanged, 1, MPI_INT, MPI_COMM_WORLD);
+		memberChanged = 0;
+		for (int p = 0; p < size; ++p) memberChanged += all_memberChanged[p];
+
+		changedPercent = (double) memberChanged / N;
+
+		printf("RANK %d - iteration %d: %d, %7.3f\n", rank, iter, memberChanged, changedPercent);
+		// printf("RANK %d - iteration %d:\n", rank, iter);
+		// printData(subarray, elements_per_proc);
+		// printVec(membership, elements_per_proc);
+		// printData(local_means, K);
 		iter++;
+
+		MPI_Barrier(MPI_COMM_WORLD); // to make sure iter is in sync. 
 	}
 
 	// MPI_Barrier(MPI_COMM_WORLD);
