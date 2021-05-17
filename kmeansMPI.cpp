@@ -55,17 +55,22 @@ int main(int argc, char* argv[]) {
 	
 	double* subarray = (double*) malloc(elements_per_proc * M * sizeof(double));
 	int* membership = (int*) malloc(elements_per_proc * sizeof(int));
+	double* local_means = (double*) malloc(K * M * sizeof(double));
+	int* all_memberChanged = (int*) malloc(size * sizeof(int));
+	double* all_local_means = (double*) malloc(size * K * M * sizeof(double));
+	int* local_cluster_size = (int*) malloc(K * sizeof(int)); // key: cluster id, value: # of data
+	int* all_local_cluster_size = (int*) malloc(size * K * sizeof(int));
 	
 	MPI_Barrier(MPI_COMM_WORLD);
+	double tt = MPI_Wtime();
+
 	printf("Rank %d: scatter dataset to each processor\n", rank);
 	MPI_Scatter(dataset, elements_per_proc * M, MPI_DOUBLE, subarray, elements_per_proc * M, MPI_DOUBLE, ROOT, MPI_COMM_WORLD);
 
 	MPI_Barrier(MPI_COMM_WORLD);
 
 	// 2. Node 0 randomly choose K points as cluster means and broadcast
-	double* local_means = (double*) malloc(K * M * sizeof(double));
 	if (rank == ROOT) initializeCentroids(dataset, local_means, N, K, M);
-	
 	
 	printf("Rank %d: broadcast k means\n", rank);
 	MPI_Barrier(MPI_COMM_WORLD);	
@@ -74,10 +79,6 @@ int main(int argc, char* argv[]) {
 
 	int iter = 0;
 	double changedPercent = 1.0;
-	int* all_memberChanged = (int*) malloc(size * sizeof(int));
-	double* all_local_means = (double*) malloc(size * K * M * sizeof(double));
-	int* local_cluster_size = (int*) malloc(K * sizeof(int)); // key: cluster id, value: # of data
-	int* all_local_cluster_size = (int*) malloc(size * K * sizeof(int));
 
 
 	while(iter < 10000 && changedPercent > 0.001) {
@@ -172,6 +173,13 @@ int main(int argc, char* argv[]) {
 				ROOT, MPI_COMM_WORLD);
 
 	if (rank == ROOT) output(global_membership, N);
+
+	tt = MPI_Wtime() - tt;
+
+	if (rank == ROOT) {
+		printf("kmeans latency: %e ms\n", tt * 1000);
+		printf("kmeans bandwidth: %e GB/s\n", (N * M)/tt/1e9);
+	}
 	
 	free(dataset);
 	free(subarray);
